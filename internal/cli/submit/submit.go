@@ -677,8 +677,14 @@ func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID
 		}
 
 		if _, cancelErr := client.CancelReviewSubmission(ctx, sub.ID); cancelErr != nil {
+			message := fmt.Sprintf("Warning: failed to cancel stale submission %s: %v", sub.ID, cancelErr)
+			if errors.Is(cancelErr, asc.ErrConflict) {
+				message = fmt.Sprintf("Skipped stale submission %s: already transitioned to a non-cancellable state", sub.ID)
+			}
 			if emit != nil {
-				emit(fmt.Sprintf("Warning: failed to cancel stale submission %s: %v", sub.ID, cancelErr))
+				emit(message)
+			} else {
+				fmt.Fprintln(os.Stderr, message)
 			}
 			continue
 		}
