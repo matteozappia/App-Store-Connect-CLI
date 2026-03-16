@@ -42,6 +42,10 @@ func TestPublishAppStoreSubmitUsesModernReviewSubmissionFlow(t *testing.T) {
 			}, nil
 		case req.Method == http.MethodPatch && req.URL.Path == "/v1/buildUploadFiles/file-1":
 			return jsonResponse(http.StatusOK, `{"data":{"type":"buildUploadFiles","id":"file-1","attributes":{"uploaded":true}}}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/buildUploads/upload-1":
+			return jsonResponse(http.StatusOK, `{"data":{"type":"buildUploads","id":"upload-1","attributes":{"cfBundleShortVersionString":"1.2.3","cfBundleVersion":"42","platform":"IOS"},"relationships":{"build":{"data":{"type":"builds","id":"build-42"}}}}}`)
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/builds/build-42":
+			return jsonResponse(http.StatusOK, `{"data":{"type":"builds","id":"build-42","attributes":{"version":"42","processingState":"VALID"}}}`)
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/preReleaseVersions":
 			if req.URL.Query().Get("filter[version]") != "1.2.3" {
 				t.Fatalf("expected filter[version]=1.2.3, got %q", req.URL.Query().Get("filter[version]"))
