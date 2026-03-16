@@ -1522,6 +1522,18 @@ func (w silentSubmissionHintWrapper) Unwrap() error {
 	return w.err
 }
 
+type silentSubmissionHintJoinWrapper struct {
+	errs []error
+}
+
+func (w silentSubmissionHintJoinWrapper) Error() string {
+	return "outer join wrapper"
+}
+
+func (w silentSubmissionHintJoinWrapper) Unwrap() []error {
+	return w.errs
+}
+
 func TestPrintSubmissionErrorHintsTraversesWrappedErrors(t *testing.T) {
 	wrapped := silentSubmissionHintWrapper{
 		err: silentSubmissionHintWrapper{
@@ -1540,6 +1552,28 @@ func TestPrintSubmissionErrorHintsTraversesWrappedErrors(t *testing.T) {
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected wrapped-error hint %q in stderr, got %q", want, stderr)
+		}
+	}
+}
+
+func TestPrintSubmissionErrorHintsTraversesJoinedErrors(t *testing.T) {
+	joined := silentSubmissionHintJoinWrapper{
+		errs: []error{
+			errors.New("unrelated"),
+			errors.New("primaryCategory"),
+		},
+	}
+
+	stderr := captureSubmitStderr(t, func() {
+		printSubmissionErrorHints(joined, "app-1")
+	})
+
+	for _, want := range []string{
+		"Hint: List available categories: asc categories list",
+		"Hint: Review category update flags: asc app-setup categories set --help",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected joined-error hint %q in stderr, got %q", want, stderr)
 		}
 	}
 }

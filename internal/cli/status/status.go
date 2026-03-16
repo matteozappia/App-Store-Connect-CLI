@@ -41,45 +41,6 @@ type dashboardResponse struct {
 	Links         *linksSection         `json:"links,omitempty"`
 }
 
-type dashboardSnapshotKey struct {
-	AppID                        string
-	AppBundleID                  string
-	AppName                      string
-	SummaryHealth                string
-	SummaryNextAction            string
-	SummaryBlockers              string
-	BuildLatestID                string
-	BuildLatestVersion           string
-	BuildLatestNumber            string
-	BuildLatestProcessingState   string
-	BuildLatestUploadedDate      string
-	BuildLatestPlatform          string
-	TestFlightLatestDistributed  string
-	TestFlightBetaReviewState    string
-	TestFlightExternalBuildState string
-	TestFlightSubmittedDate      string
-	AppStoreVersionID            string
-	AppStoreVersion              string
-	AppStoreState                string
-	AppStorePlatform             string
-	AppStoreCreatedDate          string
-	SubmissionInFlight           bool
-	SubmissionBlockingIssues     string
-	ReviewLatestSubmissionID     string
-	ReviewState                  string
-	ReviewSubmittedDate          string
-	ReviewPlatform               string
-	PhasedConfigured             bool
-	PhasedID                     string
-	PhasedState                  string
-	PhasedStartDate              string
-	PhasedCurrentDayNumber       int
-	PhasedTotalPauseDuration     int
-	LinkAppStoreConnect          string
-	LinkTestFlight               string
-	LinkReview                   string
-}
-
 type statusApp struct {
 	ID       string `json:"id"`
 	BundleID string `json:"bundleId"`
@@ -259,8 +220,7 @@ Examples:
 }
 
 func watchDashboard(ctx context.Context, client *asc.Client, appID string, includes includeSet, output string, pretty bool, pollInterval time.Duration, maxPolls int) error {
-	var seen dashboardSnapshotKey
-	hasSeen := false
+	seen := ""
 
 	for poll := 1; maxPolls == 0 || poll <= maxPolls; poll++ {
 		requestCtx, cancel := shared.ContextWithTimeout(ctx)
@@ -273,13 +233,15 @@ func watchDashboard(ctx context.Context, client *asc.Client, appID string, inclu
 			return fmt.Errorf("status: %w", err)
 		}
 
-		current := buildDashboardSnapshotKey(resp)
-		if poll == 1 || !hasSeen || current != seen {
+		current, err := buildDashboardSnapshotSignature(resp)
+		if err != nil {
+			return fmt.Errorf("status: encode watch snapshot: %w", err)
+		}
+		if poll == 1 || current != seen {
 			if err := printWatchSnapshot(resp, output, pretty, poll > 1); err != nil {
 				return err
 			}
 			seen = current
-			hasSeen = true
 		}
 
 		if maxPolls > 0 && poll >= maxPolls {
@@ -296,75 +258,35 @@ func watchDashboard(ctx context.Context, client *asc.Client, appID string, inclu
 	return nil
 }
 
-func buildDashboardSnapshotKey(resp *dashboardResponse) dashboardSnapshotKey {
-	if resp == nil {
-		return dashboardSnapshotKey{}
+func buildDashboardSnapshotSignature(resp *dashboardResponse) (string, error) {
+	data, err := json.Marshal(normalizeDashboardSnapshot(resp))
+	if err != nil {
+		return "", err
 	}
-
-	key := dashboardSnapshotKey{
-		SummaryHealth:            strings.TrimSpace(resp.Summary.Health),
-		SummaryNextAction:        strings.TrimSpace(resp.Summary.NextAction),
-		SummaryBlockers:          strings.Join(resp.Summary.Blockers, "\x00"),
-		SubmissionBlockingIssues: snapshotKeyList(resp.Submission, func(s *submissionSection) []string { return s.BlockingIssues }),
-	}
-
-	if resp.App != nil {
-		key.AppID = strings.TrimSpace(resp.App.ID)
-		key.AppBundleID = strings.TrimSpace(resp.App.BundleID)
-		key.AppName = strings.TrimSpace(resp.App.Name)
-	}
-	if resp.Builds != nil && resp.Builds.Latest != nil {
-		key.BuildLatestID = strings.TrimSpace(resp.Builds.Latest.ID)
-		key.BuildLatestVersion = strings.TrimSpace(resp.Builds.Latest.Version)
-		key.BuildLatestNumber = strings.TrimSpace(resp.Builds.Latest.BuildNumber)
-		key.BuildLatestProcessingState = strings.TrimSpace(resp.Builds.Latest.ProcessingState)
-		key.BuildLatestUploadedDate = strings.TrimSpace(resp.Builds.Latest.UploadedDate)
-		key.BuildLatestPlatform = strings.TrimSpace(resp.Builds.Latest.Platform)
-	}
-	if resp.TestFlight != nil {
-		key.TestFlightLatestDistributed = strings.TrimSpace(resp.TestFlight.LatestDistributedBuildID)
-		key.TestFlightBetaReviewState = strings.TrimSpace(resp.TestFlight.BetaReviewState)
-		key.TestFlightExternalBuildState = strings.TrimSpace(resp.TestFlight.ExternalBuildState)
-		key.TestFlightSubmittedDate = strings.TrimSpace(resp.TestFlight.SubmittedDate)
-	}
-	if resp.AppStore != nil {
-		key.AppStoreVersionID = strings.TrimSpace(resp.AppStore.VersionID)
-		key.AppStoreVersion = strings.TrimSpace(resp.AppStore.Version)
-		key.AppStoreState = strings.TrimSpace(resp.AppStore.State)
-		key.AppStorePlatform = strings.TrimSpace(resp.AppStore.Platform)
-		key.AppStoreCreatedDate = strings.TrimSpace(resp.AppStore.CreatedDate)
-	}
-	if resp.Submission != nil {
-		key.SubmissionInFlight = resp.Submission.InFlight
-	}
-	if resp.Review != nil {
-		key.ReviewLatestSubmissionID = strings.TrimSpace(resp.Review.LatestSubmissionID)
-		key.ReviewState = strings.TrimSpace(resp.Review.State)
-		key.ReviewSubmittedDate = strings.TrimSpace(resp.Review.SubmittedDate)
-		key.ReviewPlatform = strings.TrimSpace(resp.Review.Platform)
-	}
-	if resp.PhasedRelease != nil {
-		key.PhasedConfigured = resp.PhasedRelease.Configured
-		key.PhasedID = strings.TrimSpace(resp.PhasedRelease.ID)
-		key.PhasedState = strings.TrimSpace(resp.PhasedRelease.State)
-		key.PhasedStartDate = strings.TrimSpace(resp.PhasedRelease.StartDate)
-		key.PhasedCurrentDayNumber = resp.PhasedRelease.CurrentDayNumber
-		key.PhasedTotalPauseDuration = resp.PhasedRelease.TotalPauseDuration
-	}
-	if resp.Links != nil {
-		key.LinkAppStoreConnect = strings.TrimSpace(resp.Links.AppStoreConnect)
-		key.LinkTestFlight = strings.TrimSpace(resp.Links.TestFlight)
-		key.LinkReview = strings.TrimSpace(resp.Links.Review)
-	}
-
-	return key
+	return string(data), nil
 }
 
-func snapshotKeyList[T any](value *T, list func(*T) []string) string {
-	if value == nil {
-		return ""
+func normalizeDashboardSnapshot(resp *dashboardResponse) *dashboardResponse {
+	if resp == nil {
+		return nil
 	}
-	return strings.Join(list(value), "\x00")
+
+	normalized := *resp
+	normalized.Summary = resp.Summary
+	normalized.Summary.Blockers = normalizeStringSlice(resp.Summary.Blockers)
+	if resp.Submission != nil {
+		submission := *resp.Submission
+		submission.BlockingIssues = normalizeStringSlice(resp.Submission.BlockingIssues)
+		normalized.Submission = &submission
+	}
+	return &normalized
+}
+
+func normalizeStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), values...)
 }
 
 func printWatchSnapshot(resp *dashboardResponse, output string, pretty bool, separator bool) error {

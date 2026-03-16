@@ -7,7 +7,7 @@ import (
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 )
 
-func TestBuildDashboardSnapshotKeyTreatsNilAndEmptySlicesEqually(t *testing.T) {
+func TestBuildDashboardSnapshotSignatureTreatsNilAndEmptySlicesEqually(t *testing.T) {
 	first := &dashboardResponse{
 		Summary: statusSummary{
 			Health:     "green",
@@ -31,12 +31,21 @@ func TestBuildDashboardSnapshotKeyTreatsNilAndEmptySlicesEqually(t *testing.T) {
 		},
 	}
 
-	if firstKey, secondKey := buildDashboardSnapshotKey(first), buildDashboardSnapshotKey(second); firstKey != secondKey {
-		t.Fatalf("expected semantically identical snapshots to match, got %#v != %#v", firstKey, secondKey)
+	firstSig, err := buildDashboardSnapshotSignature(first)
+	if err != nil {
+		t.Fatalf("buildDashboardSnapshotSignature(first) error: %v", err)
+	}
+	secondSig, err := buildDashboardSnapshotSignature(second)
+	if err != nil {
+		t.Fatalf("buildDashboardSnapshotSignature(second) error: %v", err)
+	}
+
+	if firstSig != secondSig {
+		t.Fatalf("expected semantically identical snapshots to match, got %q != %q", firstSig, secondSig)
 	}
 }
 
-func TestBuildDashboardSnapshotKeyChangesWhenVisibleDataChanges(t *testing.T) {
+func TestBuildDashboardSnapshotSignatureChangesWhenVisibleDataChanges(t *testing.T) {
 	first := &dashboardResponse{
 		Review: &reviewSection{
 			State: "WAITING_FOR_REVIEW",
@@ -48,8 +57,17 @@ func TestBuildDashboardSnapshotKeyChangesWhenVisibleDataChanges(t *testing.T) {
 		},
 	}
 
-	if firstKey, secondKey := buildDashboardSnapshotKey(first), buildDashboardSnapshotKey(second); firstKey == secondKey {
-		t.Fatalf("expected differing visible review state to change snapshot key, got %#v", firstKey)
+	firstSig, err := buildDashboardSnapshotSignature(first)
+	if err != nil {
+		t.Fatalf("buildDashboardSnapshotSignature(first) error: %v", err)
+	}
+	secondSig, err := buildDashboardSnapshotSignature(second)
+	if err != nil {
+		t.Fatalf("buildDashboardSnapshotSignature(second) error: %v", err)
+	}
+
+	if firstSig == secondSig {
+		t.Fatalf("expected differing visible review state to change snapshot signature, got %q", firstSig)
 	}
 }
 

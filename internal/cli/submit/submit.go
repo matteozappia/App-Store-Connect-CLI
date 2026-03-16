@@ -1010,9 +1010,26 @@ func printSubmissionErrorHints(err error, appID string) {
 }
 
 func errorChainContains(err error, needle string) bool {
-	for current := err; current != nil; current = errors.Unwrap(current) {
+	stack := []error{err}
+	for len(stack) > 0 {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if current == nil {
+			continue
+		}
 		if strings.Contains(current.Error(), needle) {
 			return true
+		}
+
+		type unwrapMany interface {
+			Unwrap() []error
+		}
+		if multi, ok := current.(unwrapMany); ok {
+			stack = append(stack, multi.Unwrap()...)
+			continue
+		}
+		if next := errors.Unwrap(current); next != nil {
+			stack = append(stack, next)
 		}
 	}
 	return false
