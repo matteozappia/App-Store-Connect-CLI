@@ -23,7 +23,7 @@ func TestMetadataApplyValidationErrors(t *testing.T) {
 		{
 			name:    "metadata apply positional args rejected",
 			args:    []string{"metadata", "apply", "--app", "123456789", "--version", "1.2.3", "--dir", "./metadata", "extra"},
-			wantErr: "metadata push does not accept positional arguments",
+			wantErr: "metadata apply does not accept positional arguments",
 		},
 	}
 

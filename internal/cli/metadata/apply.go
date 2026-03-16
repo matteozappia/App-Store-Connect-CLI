@@ -1,14 +1,18 @@
 package metadata
 
 import (
+	"context"
 	"flag"
 
 	"github.com/peterbourgon/ff/v3/ffcli"
+
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/shared"
 )
 
 // MetadataApplyCommand returns the canonical apply alias for metadata push.
 func MetadataApplyCommand() *ffcli.Command {
 	cmd := MetadataPushCommand()
+	pushExec := cmd.Exec
 	cmd.Name = "apply"
 	cmd.FlagSet = cloneFlagSetWithName(cmd.FlagSet, "metadata apply")
 	cmd.ShortUsage = "asc metadata apply --app \"APP_ID\" --version \"1.2.3\" --dir \"./metadata\" [--app-info \"APP_INFO_ID\"] [--dry-run]"
@@ -26,6 +30,12 @@ Notes:
   - default.json fallback is applied only when --allow-deletes is not set.
   - with --allow-deletes, remote locales missing locally are planned as deletes.
   - omitted fields are treated as no-op; they do not imply deletion.`
+	cmd.Exec = func(ctx context.Context, args []string) error {
+		if len(args) > 0 {
+			return shared.UsageError("metadata apply does not accept positional arguments")
+		}
+		return pushExec(ctx, nil)
+	}
 	return cmd
 }
 
