@@ -626,36 +626,6 @@ func executePipeline(ctx context.Context, opts runOptions) (runResult, error) {
 				return stepOutcome{}, fmt.Errorf("submit review: resolved version ID is empty")
 			}
 
-			legacySubmission, subErr := client.GetAppStoreVersionSubmissionForVersion(requestCtx, versionID)
-			if subErr != nil && !asc.IsNotFound(subErr) {
-				return stepOutcome{}, fmt.Errorf("submit review: failed to lookup existing submission: %w", subErr)
-			}
-			if subErr == nil && strings.TrimSpace(legacySubmission.Data.ID) != "" {
-				existingID := strings.TrimSpace(legacySubmission.Data.ID)
-				status := "skipped"
-				message := "submission already exists for version"
-				if opts.DryRun {
-					status = "dry-run"
-					message = "submission already exists for version (no action needed)"
-				}
-				return stepOutcome{
-					Status:       status,
-					Message:      message,
-					Details:      map[string]any{"submissionId": existingID, "alreadySubmitted": true},
-					Persist:      !opts.DryRun,
-					SubmissionID: existingID,
-				}, nil
-			}
-
-			if opts.DryRun {
-				return stepOutcome{
-					Status:  "dry-run",
-					Message: "would create and submit review submission",
-					Details: map[string]any{"versionId": versionID, "buildId": opts.BuildID},
-					Persist: false,
-				}, nil
-			}
-
 			submitResult, submitErr := submitcli.SubmitResolvedVersion(requestCtx, client, submitcli.SubmitResolvedVersionOptions{
 				AppID:                    opts.AppID,
 				VersionID:                versionID,

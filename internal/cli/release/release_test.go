@@ -477,6 +477,7 @@ func TestExecuteRun_IdempotentWhenSubmissionExists(t *testing.T) {
 	})
 
 	requests := make([]string, 0, 4)
+	legacySubmissionLookups := 0
 	http.DefaultTransport = releaseRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		requests = append(requests, req.Method+" "+req.URL.Path)
 		switch {
@@ -485,6 +486,7 @@ func TestExecuteRun_IdempotentWhenSubmissionExists(t *testing.T) {
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/VERSION_123/build":
 			return releaseJSONResponse(http.StatusOK, `{"data":{"type":"builds","id":"BUILD_123","attributes":{"version":"42","processingState":"VALID"}}}`)
 		case req.Method == http.MethodGet && req.URL.Path == "/v1/appStoreVersions/VERSION_123/appStoreVersionSubmission":
+			legacySubmissionLookups++
 			return releaseJSONResponse(http.StatusOK, `{"data":{"type":"appStoreVersionSubmissions","id":"SUBMISSION_123"}}`)
 		default:
 			return nil, fmt.Errorf("unexpected request: %s %s", req.Method, req.URL.Path)
@@ -546,6 +548,9 @@ func TestExecuteRun_IdempotentWhenSubmissionExists(t *testing.T) {
 		if strings.HasPrefix(req, "POST /v1/reviewSubmissions") || strings.HasPrefix(req, "POST /v1/reviewSubmissionItems") {
 			t.Fatalf("expected idempotent path without new submission creation, saw %q", req)
 		}
+	}
+	if legacySubmissionLookups != 1 {
+		t.Fatalf("expected exactly 1 legacy submission lookup, got %d", legacySubmissionLookups)
 	}
 }
 
