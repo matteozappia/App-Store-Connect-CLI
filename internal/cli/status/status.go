@@ -774,16 +774,52 @@ func selectLatestReviewSubmission(submissions []asc.ReviewSubmissionResource) *a
 
 	best := submissions[0]
 	for _, current := range submissions[1:] {
-		dateOrder := compareRFC3339DateStrings(current.Attributes.SubmittedDate, best.Attributes.SubmittedDate)
-		if dateOrder > 0 {
-			best = current
-			continue
-		}
-		if dateOrder == 0 && current.ID > best.ID {
+		if shouldPreferLatestReviewSubmission(current, best) {
 			best = current
 		}
 	}
 	return &best
+}
+
+func shouldPreferLatestReviewSubmission(current, best asc.ReviewSubmissionResource) bool {
+	currentPriority := statusReviewSubmissionPriority(current.Attributes.SubmissionState)
+	bestPriority := statusReviewSubmissionPriority(best.Attributes.SubmissionState)
+
+	currentTime, currentValid := parseRFC3339Date(current.Attributes.SubmittedDate)
+	bestTime, bestValid := parseRFC3339Date(best.Attributes.SubmittedDate)
+
+	switch {
+	case currentValid && bestValid:
+		if currentTime.After(bestTime) {
+			return true
+		}
+		if currentTime.Before(bestTime) {
+			return false
+		}
+	case currentValid != bestValid:
+		if currentPriority != bestPriority {
+			return currentPriority > bestPriority
+		}
+		return currentValid
+	}
+
+	if currentPriority != bestPriority {
+		return currentPriority > bestPriority
+	}
+	return current.ID > best.ID
+}
+
+func statusReviewSubmissionPriority(state asc.ReviewSubmissionState) int {
+	switch state {
+	case asc.ReviewSubmissionStateReadyForReview,
+		asc.ReviewSubmissionStateWaitingForReview,
+		asc.ReviewSubmissionStateInReview,
+		asc.ReviewSubmissionStateUnresolvedIssues,
+		asc.ReviewSubmissionStateCanceling:
+		return 2
+	default:
+		return 1
+	}
 }
 
 func selectLatestBetaReviewSubmission(submissions []asc.Resource[asc.BetaAppReviewSubmissionAttributes]) *asc.Resource[asc.BetaAppReviewSubmissionAttributes] {

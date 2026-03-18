@@ -202,6 +202,33 @@ func TestSelectLatestReviewSubmission_ParsesRFC3339Offsets(t *testing.T) {
 	}
 }
 
+func TestSelectLatestReviewSubmission_PrefersActiveSubmissionWithoutSubmittedDate(t *testing.T) {
+	submissions := []asc.ReviewSubmissionResource{
+		{
+			ID: "sub-complete",
+			Attributes: asc.ReviewSubmissionAttributes{
+				SubmissionState: asc.ReviewSubmissionStateComplete,
+				SubmittedDate:   "2026-03-16T10:00:00Z",
+			},
+		},
+		{
+			ID: "sub-ready",
+			Attributes: asc.ReviewSubmissionAttributes{
+				SubmissionState: asc.ReviewSubmissionStateReadyForReview,
+				SubmittedDate:   "",
+			},
+		},
+	}
+
+	selected := selectLatestReviewSubmission(submissions)
+	if selected == nil {
+		t.Fatal("expected selected submission, got nil")
+	}
+	if selected.ID != "sub-ready" {
+		t.Fatalf("expected active ready-for-review submission to win, got %q", selected.ID)
+	}
+}
+
 func TestSelectLatestBetaReviewSubmission_ParsesRFC3339Offsets(t *testing.T) {
 	submissions := []asc.Resource[asc.BetaAppReviewSubmissionAttributes]{
 		{

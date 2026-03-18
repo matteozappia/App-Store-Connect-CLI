@@ -404,26 +404,7 @@ func selectRelevantReviewSubmission(submissions []asc.ReviewSubmissionResource, 
 
 	best := filtered[0]
 	for _, current := range filtered[1:] {
-		cmp := compareRFC3339DateStrings(current.Attributes.SubmittedDate, best.Attributes.SubmittedDate)
-		if cmp > 0 {
-			best = current
-			continue
-		}
-		if cmp < 0 {
-			continue
-		}
-
-		bestPriority := reviewSubmissionPriority(best.Attributes.SubmissionState)
-		currentPriority := reviewSubmissionPriority(current.Attributes.SubmissionState)
-		if currentPriority > bestPriority {
-			best = current
-			continue
-		}
-		if currentPriority < bestPriority {
-			continue
-		}
-
-		if current.ID > best.ID {
+		if shouldPreferReviewSubmission(current, best) {
 			best = current
 		}
 	}
@@ -455,6 +436,34 @@ func reviewSubmissionPriority(state asc.ReviewSubmissionState) int {
 	default:
 		return 1
 	}
+}
+
+func shouldPreferReviewSubmission(current, best asc.ReviewSubmissionResource) bool {
+	currentPriority := reviewSubmissionPriority(current.Attributes.SubmissionState)
+	bestPriority := reviewSubmissionPriority(best.Attributes.SubmissionState)
+
+	currentTime, currentValid := parseRFC3339Date(current.Attributes.SubmittedDate)
+	bestTime, bestValid := parseRFC3339Date(best.Attributes.SubmittedDate)
+
+	switch {
+	case currentValid && bestValid:
+		if currentTime.After(bestTime) {
+			return true
+		}
+		if currentTime.Before(bestTime) {
+			return false
+		}
+	case currentValid != bestValid:
+		if currentPriority != bestPriority {
+			return currentPriority > bestPriority
+		}
+		return currentValid
+	}
+
+	if currentPriority != bestPriority {
+		return currentPriority > bestPriority
+	}
+	return current.ID > best.ID
 }
 
 func buildReviewStatusResult(snapshot reviewSnapshot) reviewStatusResult {

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/asc"
 	validatecli "github.com/rudrankriyam/App-Store-Connect-CLI/internal/cli/validate"
 	"github.com/rudrankriyam/App-Store-Connect-CLI/internal/validation"
 )
@@ -108,6 +109,46 @@ func TestBuildReviewDoctorResultAddsSyntheticUnresolvedIssuesBlocker(t *testing.
 	}
 	if result.NextAction == "" {
 		t.Fatal("expected next action")
+	}
+}
+
+func TestSelectRelevantReviewSubmissionPrefersActiveSubmissionWithoutSubmittedDate(t *testing.T) {
+	submissions := []asc.ReviewSubmissionResource{
+		{
+			ID: "review-sub-complete",
+			Attributes: asc.ReviewSubmissionAttributes{
+				SubmissionState: asc.ReviewSubmissionStateComplete,
+				SubmittedDate:   "2026-03-16T10:00:00Z",
+			},
+			Relationships: &asc.ReviewSubmissionRelationships{
+				AppStoreVersionForReview: &asc.Relationship{
+					Data: asc.ResourceData{ID: "ver-1", Type: asc.ResourceTypeAppStoreVersions},
+				},
+			},
+		},
+		{
+			ID: "review-sub-ready",
+			Attributes: asc.ReviewSubmissionAttributes{
+				SubmissionState: asc.ReviewSubmissionStateReadyForReview,
+				SubmittedDate:   "",
+			},
+			Relationships: &asc.ReviewSubmissionRelationships{
+				AppStoreVersionForReview: &asc.Relationship{
+					Data: asc.ResourceData{ID: "ver-1", Type: asc.ResourceTypeAppStoreVersions},
+				},
+			},
+		},
+	}
+
+	selected := selectRelevantReviewSubmission(submissions, "ver-1")
+	if selected == nil {
+		t.Fatal("expected selected submission, got nil")
+	}
+	if selected.ID != "review-sub-ready" {
+		t.Fatalf("expected active ready-for-review submission to win, got %q", selected.ID)
+	}
+	if selected.State != string(asc.ReviewSubmissionStateReadyForReview) {
+		t.Fatalf("expected READY_FOR_REVIEW state, got %q", selected.State)
 	}
 }
 

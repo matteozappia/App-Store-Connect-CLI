@@ -376,6 +376,21 @@ func executeScreenshotReviewPlan(ctx context.Context, opts screenshotReviewPlanO
 
 	result.PlannedGroups = len(groupKeys)
 
+	for _, key := range groupKeys {
+		files := cloneSortedFiles(groupedFiles[key])
+		if err := validateScreenshotDimensions(files, key.displayType); err != nil {
+			appendScreenshotReviewIssue(
+				result,
+				"error",
+				"",
+				key.locale,
+				key.displayType,
+				err.Error(),
+				"Regenerate the approved screenshot artifact for this screenshot slot before uploading.",
+			)
+		}
+	}
+
 	blockingIssues := result.ErrorCount > 0
 	if blockingIssues {
 		for _, key := range groupKeys {

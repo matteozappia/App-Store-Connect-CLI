@@ -1,11 +1,14 @@
 package cmdtest
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
@@ -298,12 +301,90 @@ func TestScreenshotsPlanRejectsVersionIDFromDifferentApp(t *testing.T) {
 	}
 }
 
+func TestScreenshotsPlanRejectsActualImageDimensionsThatDoNotMatchPlannedDisplayType(t *testing.T) {
+	setupAuth(t)
+	t.Setenv("ASC_CONFIG_PATH", filepath.Join(t.TempDir(), "nonexistent.json"))
+	t.Setenv("ASC_APP_ID", "")
+
+	reviewDir, _ := writeScreenshotReviewArtifactsWithSize(t, 1, 1)
+
+	originalTransport := http.DefaultTransport
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/v1/apps/123456789/appStoreVersions":
+			return statusJSONResponse(`{"data":[{"type":"appStoreVersions","id":"version-1","attributes":{"versionString":"1.2.3","platform":"IOS"}}]}`), nil
+		case "/v1/appStoreVersions/version-1/appStoreVersionLocalizations":
+			return statusJSONResponse(`{"data":[{"type":"appStoreVersionLocalizations","id":"LOC_123","attributes":{"locale":"en-US"}}]}`), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+
+	root := RootCommand("1.2.3")
+	root.FlagSet.SetOutput(io.Discard)
+
+	var runErr error
+	stdout, stderr := captureOutput(t, func() {
+		if err := root.Parse([]string{
+			"screenshots", "plan",
+			"--app", "123456789",
+			"--version", "1.2.3",
+			"--review-output-dir", reviewDir,
+		}); err != nil {
+			t.Fatalf("parse error: %v", err)
+		}
+		runErr = root.Run(context.Background())
+	})
+
+	if runErr == nil {
+		t.Fatal("expected dimension validation error")
+	}
+	if stdout == "" {
+		t.Fatal("expected structured output describing the blocking issue")
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(stdout), &payload); err != nil {
+		t.Fatalf("unmarshal output: %v\nstdout=%s", err, stdout)
+	}
+	if payload["errorCount"] != float64(1) {
+		t.Fatalf("expected errorCount=1, got %v", payload["errorCount"])
+	}
+	issues, ok := payload["issues"].([]any)
+	if !ok || len(issues) == 0 {
+		t.Fatalf("expected issues slice, got %T %v", payload["issues"], payload["issues"])
+	}
+	found := false
+	for _, rawIssue := range issues {
+		issue := rawIssue.(map[string]any)
+		if issue["severity"] == "error" && strings.Contains(fmt.Sprint(issue["message"]), "unsupported size") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected unsupported size error issue, got %v", issues)
+	}
+}
+
 func writeScreenshotReviewArtifacts(t *testing.T) (string, string) {
+	return writeScreenshotReviewArtifactsWithSize(t, 1284, 2778)
+}
+
+func writeScreenshotReviewArtifactsWithSize(t *testing.T, width, height int) (string, string) {
 	t.Helper()
 
 	reviewDir := t.TempDir()
 	imagePath := filepath.Join(reviewDir, "home.png")
-	if err := os.WriteFile(imagePath, tinyPNG(), 0o600); err != nil {
+	if err := os.WriteFile(imagePath, pngBytes(t, width, height), 0o600); err != nil {
 		t.Fatalf("write screenshot image: %v", err)
 	}
 
@@ -322,8 +403,8 @@ func writeScreenshotReviewArtifacts(t *testing.T) (string, string) {
 				"device":"iphone",
 				"framed_path":"` + imagePath + `",
 				"framed_relative_path":"home.png",
-				"width":1290,
-				"height":2796,
+				"width":1284,
+				"height":2778,
 				"display_types":["APP_IPHONE_65"],
 				"valid_app_store_size":true,
 				"status":"ready",
@@ -343,16 +424,13 @@ func writeScreenshotReviewArtifacts(t *testing.T) (string, string) {
 	return reviewDir, imagePath
 }
 
-func tinyPNG() []byte {
-	return []byte{
-		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
-		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
-		0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41,
-		0x54, 0x78, 0x9c, 0x63, 0xf8, 0xcf, 0xc0, 0x00,
-		0x00, 0x03, 0x01, 0x01, 0x00, 0xc9, 0xfe, 0x92,
-		0xef, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e,
-		0x44, 0xae, 0x42, 0x60, 0x82,
+func pngBytes(t *testing.T, width, height int) []byte {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("encode png: %v", err)
 	}
+	return buf.Bytes()
 }
