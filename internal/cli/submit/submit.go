@@ -1352,8 +1352,9 @@ func addVersionToSubmissionOrRecover(
 // given app and platform. These are orphans from prior failed submit attempts.
 // Errors are logged to stderr but do not block the new submission.
 func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID, platform string, emit func(string)) map[string]struct{} {
-	existing, err := client.GetReviewSubmissions(
+	existing, err := shared.FetchAllReviewSubmissions(
 		ctx,
+		client,
 		appID,
 		asc.WithReviewSubmissionsStates([]string{string(asc.ReviewSubmissionStateReadyForReview)}),
 		asc.WithReviewSubmissionsPlatforms([]string{platform}),
@@ -1366,13 +1367,13 @@ func cancelStaleReviewSubmissions(ctx context.Context, client *asc.Client, appID
 		}
 		return nil
 	}
-	if len(existing.Data) == 0 {
+	if len(existing) == 0 {
 		return nil
 	}
 
-	canceledSubmissionIDs := make(map[string]struct{}, len(existing.Data))
+	canceledSubmissionIDs := make(map[string]struct{}, len(existing))
 	normalizedPlatform := strings.ToUpper(strings.TrimSpace(platform))
-	for _, sub := range existing.Data {
+	for _, sub := range existing {
 		if sub.Attributes.SubmissionState != asc.ReviewSubmissionStateReadyForReview {
 			continue
 		}

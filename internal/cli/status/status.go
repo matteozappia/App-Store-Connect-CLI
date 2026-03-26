@@ -660,19 +660,18 @@ func fillSubmissionAndReview(ctx context.Context, client *asc.Client, appID stri
 	if err != nil {
 		return err
 	}
+	latest := selectLatestReviewSubmission(submissions)
 
 	if includes.submission {
 		section := &submissionSection{
 			InFlight:       false,
 			BlockingIssues: []string{},
 		}
-		for _, submission := range submissions {
-			state := string(submission.Attributes.SubmissionState)
-			if isInFlightSubmissionState(state) {
-				section.InFlight = true
-			}
+		if latest != nil {
+			state := string(latest.Attributes.SubmissionState)
+			section.InFlight = isInFlightSubmissionState(state)
 			if strings.EqualFold(state, string(asc.ReviewSubmissionStateUnresolvedIssues)) {
-				section.BlockingIssues = append(section.BlockingIssues, fmt.Sprintf("submission %s has unresolved issues", submission.ID))
+				section.BlockingIssues = append(section.BlockingIssues, fmt.Sprintf("submission %s has unresolved issues", latest.ID))
 			}
 		}
 		slices.Sort(section.BlockingIssues)
@@ -681,7 +680,6 @@ func fillSubmissionAndReview(ctx context.Context, client *asc.Client, appID stri
 
 	if includes.review {
 		section := &reviewSection{}
-		latest := selectLatestReviewSubmission(submissions)
 		if latest != nil {
 			section.LatestSubmissionID = latest.ID
 			section.State = string(latest.Attributes.SubmissionState)
